@@ -17,8 +17,7 @@ from validators import url, ValidationFailure
 
 from bridge.models import database
 from bridge.base_handler import ZlibPacketHandler
-from bridge.models import Judge, Language, LanguageLimit, Problem, \
-    RuntimeVersion, Submission, SubmissionTestCase
+from bridge.models import Judge, Language, Problem, RuntimeVersion, Submission, SubmissionTestCase
 
 logger = logging.getLogger('judge.bridge')
 json_log = logging.getLogger('judge.json.bridge')
@@ -218,7 +217,7 @@ class JudgeHandler(ZlibPacketHandler):
             time = sub.problem.time_limit
             memory = sub.problem.memory_limit
             short_circuit = sub.problem.short_circuit
-            lid = sub.language.id
+            # lid = sub.language.id
             is_pretested = sub.is_pretested
             sub_date = sub.date
             uid = sub.user.id
@@ -242,11 +241,11 @@ class JudgeHandler(ZlibPacketHandler):
             Submission.user.id == uid, Submission.date < sub_date, Submission.status.not_in(['CE', 'IE'])
         ).count() + 1
 
-        try:
-            time, memory = (LanguageLimit.objects.filter(problem__id=pid, language__id=lid)
-                            .values_list('time_limit', 'memory_limit').get())
-        except LanguageLimit.DoesNotExist:
-            pass
+        # try:
+        #     time, memory = (LanguageLimit.objects.filter(problem__id=pid, language__id=lid)
+        #                     .values_list('time_limit', 'memory_limit').get())
+        # except LanguageLimit.DoesNotExist:
+        #     pass
 
         return SubmissionData(
             time=time,
@@ -552,7 +551,7 @@ class JudgeHandler(ZlibPacketHandler):
         logger.info('%s: Batch ended on: %s', self.name, packet['submission-id'])
         json_log.info(self._make_json_log(packet, action='batch-end', batch=self.batch_id))
 
-    def on_test_case(self, packet, max_feedback=SubmissionTestCase._meta.get_field('feedback').max_length):
+    def on_test_case(self, packet, max_feedback=SubmissionTestCase._meta.fields['feedback'].max_length):
         logger.info('%s: %d test case(s) completed on: %s', self.name, len(packet['cases']), packet['submission-id'])
 
         id = packet['submission-id']

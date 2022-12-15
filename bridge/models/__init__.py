@@ -16,7 +16,7 @@ Class: Model = models['class']
 Judge: Model = models['judge']
 Problem: Model = models['problem']
 Submission: Model = models['submission']
-SubmissionTestCase: Model = models['submission_test_case']
+SubmissionTestCase: Model = models['submission_testcase']
 
 # Runtime
 Judge: Model = models['judge']
