@@ -1,7 +1,7 @@
 import json
 
 from peewee import MySQLDatabase, Model
-from playhouse.reflection import generate_models
+from bridge.playhouse_patch import generate_models
 
 database = MySQLDatabase(
     **json.load(open('config.json'))['database']
