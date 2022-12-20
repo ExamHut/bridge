@@ -2,7 +2,7 @@ import warnings
 import re
 
 from peewee import Model, AutoField, BareField, CompositeKey, DeferredForeignKey, \
-    ForeignKeyField, IntegerField, SQL
+    ForeignKeyField, IntegerField, SQL, ManyToManyField
 from playhouse.reflection import Introspector
 
 
@@ -26,6 +26,7 @@ class PatchedIntrospector(Introspector):
         database = self.introspect(table_names, literal_column_names,
                                    include_views)
         models = {}
+        model_attrs = {}
 
         class BaseModel(Model):
             class Meta:
@@ -117,6 +118,7 @@ class PatchedIntrospector(Introspector):
 
             try:
                 models[table] = type(str(table), (BaseModel,), attrs)
+                model_attrs[table] = attrs
             except ValueError:
                 if not skip_invalid:
                     raise
@@ -129,21 +131,29 @@ class PatchedIntrospector(Introspector):
                 _create_model(table, models)
 
         for name, model in models.items():
-            attrs = {}
+            attrs = model_attrs[name]
+            if 'id' not in model._meta.fields:
+                continue
             for fk in model._meta.backrefs.keys():
                 if 'id' not in fk.model._meta.fields:
                     right_model = [m for m in fk.model._meta.model_refs.keys() if m != model]
                     if len(right_model) != 1:
                         raise ValueError('the Many-to-many model %s contains more than 2 foreign keys' % fk.model)
                     right_model = right_model[0]
-                    attrs[pluralize(right_model._meta.name)] = fk
+
+                    # print("Create many-to-many field", name, "to", right_model._meta.name)
+                    field = ManyToManyField(right_model, backref=pluralize(name), through_model=fk.model)
+                    # print(field.accessor_class)
+                    attrs[pluralize(right_model._meta.name)] = field
                 else:
-                    attrs[pluralize(fk.model._meta.name)] = fk
-            for k in set(attrs.keys()).copy():
-                if 'DEL' in k:
-                    attrs.pop(k)
-            for attr_name, attr in attrs.items():
-                setattr(model, attr_name, attr)
+                    # print(fk.model._meta.name, 'to', name, 'with', fk)
+                    # attrs[pluralize(fk.model._meta.name)] = fk
+                    continue
+            # print(name, attrs)
+            # print(attrs.items())
+            for attr, field in attrs.items():
+                # print(attr)
+                model._meta.add_field(attr, field)
 
         return models
 

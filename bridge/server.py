@@ -3,7 +3,9 @@ from socketserver import TCPServer, ThreadingMixIn
 
 
 class ThreadingTCPListener(ThreadingMixIn, TCPServer):
-    allow_reuse_address = True
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allow_reuse_address = True
 
 
 class Server:

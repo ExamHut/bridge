@@ -3,7 +3,7 @@ import signal
 import threading
 from functools import partial
 
-# from bridge.django_handler import ServerHandler
+from bridge.backend_handler import BackendHandler
 from bridge import settings
 from bridge.judge_handler import JudgeHandler
 from bridge.judge_list import JudgeList
@@ -24,10 +24,10 @@ def judge_daemon():
 
     judges = JudgeList()
 
-    judge_server = Server(tuple(settings["server"]), partial(JudgeHandler, judges=judges))
-    # backend_server = Server(settings.BRIDGED_DJANGO_ADDRESS, partial(ServerHandler, judges=judges))
+    judge_server = Server(settings["judge"], partial(JudgeHandler, judges=judges))
+    backend_server = Server(settings["backend"], partial(BackendHandler, judges=judges))
 
-    # threading.Thread(target=backend_server.serve_forever).start()
+    threading.Thread(target=backend_server.serve_forever).start()
     threading.Thread(target=judge_server.serve_forever).start()
 
     stop = threading.Event()
@@ -43,5 +43,5 @@ def judge_daemon():
     try:
         stop.wait()
     finally:
-        # backend_server.shutdown()
+        backend_server.shutdown()
         judge_server.shutdown()

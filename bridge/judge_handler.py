@@ -135,19 +135,19 @@ class JudgeHandler(ZlibPacketHandler):
         return True
 
     def _connected(self):
-        judge = self.judge = Judge.objects.get(name=self.name)
-        judge.start_time = datetime.astimezone()
+        judge = self.judge = Judge.get(Judge.name == self.name)
+        judge.start_time = datetime.now().astimezone()
         judge.online = True
-        judge.problems.set(Problem.filter(Problem.name.in_(self.problems.keys())))
-        judge.runtimes.set(Language.filter(Language.code.in_(self.executors.keys())))
+        judge.problems.add(Problem.select().where(Problem.name.in_(list(self.problems.keys()))))
+        judge.runtime_version_set = Language.filter(Language.code.in_(list(self.executors.keys())))
 
         # Delete now in case we somehow crashed and left some over from the last connection
-        RuntimeVersion.delete().join(Judge).where(RuntimeVersion.judge == judge).execute()
+        RuntimeVersion.delete().where(RuntimeVersion.judge == judge).execute()
         versions = []
-        for lang in judge.runtimes.all():
+        for lang in judge.runtime_version_set:
             versions += [
                 RuntimeVersion(language=lang, name=name, version='.'.join(map(str, version)), priority=idx, judge=judge)
-                for idx, (name, version) in enumerate(self.executors[lang.key])
+                for idx, (name, version) in enumerate(self.executors[lang.code])
             ]
         RuntimeVersion.bulk_create(versions)
         judge.last_ip = self.client_address[0]
@@ -157,8 +157,10 @@ class JudgeHandler(ZlibPacketHandler):
                                           executors=list(self.executors.keys())))
 
     def _disconnected(self):
+        print('Im trying to shut down')
         Judge.update(online=False).where(Judge.id == self.judge.id).execute()
-        RuntimeVersion.delete().join(Judge).where(RuntimeVersion.judge == self.judge).execute()
+        print('almost...')
+        RuntimeVersion.delete().where(RuntimeVersion.judge == self.judge).execute()
 
     def _update_ping(self):
         try:
@@ -377,7 +379,7 @@ class JudgeHandler(ZlibPacketHandler):
 
         if Submission.update(
                     status='G', is_pretested=packet['pretested'], current_testcase=1, batch=False,
-                    judge_date=datetime.astimezone()
+                    judge_date=datetime.now().astimezone()
                 ).where(Submission.id == packet['submission-id']).execute():
             SubmissionTestCase.objects.filter(submission_id=packet['submission-id']).delete()
             # event.post('sub_%s' % Submission.get_id_secret(packet['submission-id']), {'type': 'grading-begin'})

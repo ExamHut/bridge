@@ -14,6 +14,7 @@ models = generate_models(database)
 User: Model = models['user']
 Class: Model = models['class']
 Judge: Model = models['judge']
+Contest: Model = models['contest']
 Problem: Model = models['problem']
 Submission: Model = models['submission']
 SubmissionTestCase: Model = models['submission_testcase']
