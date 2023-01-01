@@ -17,7 +17,8 @@ from validators import url, ValidationFailure
 
 from bridge.models import database
 from bridge.base_handler import ZlibPacketHandler
-from bridge.models import Judge, Language, Problem, RuntimeVersion, Submission, SubmissionTestCase
+from bridge.models import Judge, Language, Problem, ContestParticipation, User, RuntimeVersion, Submission, \
+    SubmissionTestCase
 
 logger = logging.getLogger('judge.bridge')
 json_log = logging.getLogger('judge.json.bridge')
@@ -138,7 +139,7 @@ class JudgeHandler(ZlibPacketHandler):
         judge = self.judge = Judge.get(Judge.name == self.name)
         judge.start_time = datetime.now().astimezone()
         judge.online = True
-        judge.problems.add(Problem.select().where(Problem.name.in_(list(self.problems.keys()))))
+        judge.problems.add(Problem.select().where(Problem.name.in_(list(self.problems.keys()))), clear_existing=True)
         judge.runtime_version_set = Language.filter(Language.code.in_(list(self.executors.keys())))
 
         # Delete now in case we somehow crashed and left some over from the last connection
@@ -223,8 +224,8 @@ class JudgeHandler(ZlibPacketHandler):
             is_pretested = sub.is_pretested
             sub_date = sub.date
             uid = sub.user.id
-            part_id = sub.contest.participation.id
-            part_virtual = sub.contest.participation.virtual
+            part_id = sub.participation.id
+            part_virtual = sub.participation.virtual
             file_only = sub.language.file_only
             file_size_limit = sub.language.file_size_limit
         except Submission.DoesNotExist:
@@ -235,13 +236,14 @@ class JudgeHandler(ZlibPacketHandler):
             ))
             return
 
-        attempt_no = Submission.objects.filter(problem__id=pid, contest__participation__id=part_id, user__id=uid,
-                                               date__lt=sub_date).exclude(status__in=('CE', 'IE')).count() + 1
-
-        attempt_no = Submission.filter(
-            Submission.problem.id == pid, Submission.contest.participation.id == part_id,
-            Submission.user.id == uid, Submission.date < sub_date, Submission.status.not_in(['CE', 'IE'])
-        ).count() + 1
+        attempt_no = Submission.select(Submission, User, Problem, ContestParticipation)\
+            .join(Problem).switch(Submission).join(User).switch(Submission).join(ContestParticipation)\
+            .where(
+                Submission.problem.id == pid,
+                Submission.participation.id == part_id,
+                Submission.user.id == uid,
+                Submission.date < sub_date, Submission.status.not_in(['CE', 'IE'])
+            ).count() + 1
 
         # try:
         #     time, memory = (LanguageLimit.objects.filter(problem__id=pid, language__id=lid)
@@ -360,7 +362,7 @@ class JudgeHandler(ZlibPacketHandler):
         json_log.exception(self._make_json_log(sub=self._working, info='packet processing exception'))
 
     def _submission_is_batch(self, id):
-        if not Submission.objects.filter(id=id).update(batch=True):
+        if not Submission.update(batch=True).where(Submission.id == id).execute():
             logger.warning('Unknown submission: %s', id)
 
     def on_supported_problems(self, packet):
@@ -379,9 +381,10 @@ class JudgeHandler(ZlibPacketHandler):
 
         if Submission.update(
                     status='G', is_pretested=packet['pretested'], current_testcase=1, batch=False,
-                    judge_date=datetime.now().astimezone()
+                    judged_date=datetime.now().astimezone()
                 ).where(Submission.id == packet['submission-id']).execute():
-            SubmissionTestCase.objects.filter(submission_id=packet['submission-id']).delete()
+            submission_testcases = SubmissionTestCase.filter(SubmissionTestCase.submission == packet['submission-id'])
+            SubmissionTestCase.delete().where(SubmissionTestCase.submission.in_(submission_testcases)).execute()
             # event.post('sub_%s' % Submission.get_id_secret(packet['submission-id']), {'type': 'grading-begin'})
             self._post_update_submission(packet['submission-id'], 'grading-begin')
             json_log.info(self._make_json_log(packet, action='grading-begin'))
@@ -409,7 +412,13 @@ class JudgeHandler(ZlibPacketHandler):
         status_codes = ['SC', 'AC', 'WA', 'MLE', 'TLE', 'IR', 'RTE', 'OLE']
         batches = {}  # batch number: (points, total)
 
-        for case in SubmissionTestCase.filter(submission_id=submission.id):
+        print(submission.id)
+
+        print(SubmissionTestCase.select().join(Submission)
+              .filter(SubmissionTestCase.submission == submission).count())
+
+        for case in SubmissionTestCase.select(SubmissionTestCase, Submission)\
+                .join(Submission):
             time += case.time
             if not case.batch:
                 points += case.points
@@ -449,17 +458,18 @@ class JudgeHandler(ZlibPacketHandler):
         json_log.info(self._make_json_log(
             packet, action='grading-end', time=time, memory=memory,
             points=sub_points, total=problem.points, result=submission.result,
-            case_points=points, case_total=total, user=submission.user_id,
+            case_points=points, case_total=total, user=submission.user.id,
             problem=problem.code, finish=True,
         ))
 
-        if problem.is_public and not problem.is_organization_private:
-            submission.user._updating_stats_only = True
-            submission.user.calculate_points()
+        logger.info('Submission %s finished with %s points, result %s', submission.id, sub_points, submission.result)
 
-        problem._updating_stats_only = True
-        problem.update_stats()
-        submission.update_contest()
+        # if problem.is_public and not problem.is_organization_private:
+        #     submission.user._updating_stats_only = True
+        #     submission.user.calculate_points()
+
+        # problem._updating_stats_only = True
+        # problem.update_stats()
 
         # finished_submission(submission)
 
@@ -475,6 +485,7 @@ class JudgeHandler(ZlibPacketHandler):
         # if hasattr(submission, 'contest'):
         #     participation = submission.contest.participation
         #     event.post('contest_%d' % participation.contest_id, {'type': 'update'})
+
         self._post_update_submission(submission.id, 'grading-end', done=True)
 
     def on_compile_error(self, packet):
@@ -567,7 +578,7 @@ class JudgeHandler(ZlibPacketHandler):
 
         bulk_test_case_updates = []
         for result in updates:
-            test_case = SubmissionTestCase(submission_id=id, case=result['position'])
+            test_case = SubmissionTestCase(submission=Submission.get_by_id(id), case=result['position'])
             status = result['status']
             if status & 4:
                 test_case.status = 'TLE'

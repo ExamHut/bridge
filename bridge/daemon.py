@@ -1,4 +1,5 @@
 import logging
+import sys
 import signal
 import threading
 from functools import partial
@@ -11,6 +12,12 @@ from bridge.server import Server
 from bridge.models import Judge, Submission
 
 logger = logging.getLogger('judge.bridge')
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler(sys.stderr)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 def reset_judges():
@@ -18,6 +25,7 @@ def reset_judges():
 
 
 def judge_daemon():
+    logger.info('Starting judge bridge')
     reset_judges()
     Submission.update(status='IE', result='IE', error=None)\
         .where(Submission.status.in_(('QU', 'G', 'P'))).execute()

@@ -27,7 +27,7 @@ class BackendHandler(ZlibPacketHandler):
         try:
             result = self.handlers.get(packet.get('name', None), self.on_malformed)(packet)
         except Exception:
-            logger.exception('Error in packet handling (Django-facing)')
+            logger.exception('Error in packet handling (Backend-facing)')
             result = {'name': 'bad-request'}
         self.send(result)
         raise Disconnect()
@@ -55,6 +55,7 @@ class BackendHandler(ZlibPacketHandler):
 
     def on_malformed(self, packet):
         logger.error('Malformed packet: %s', packet)
+        return {'name': 'bad-request'}
 
     def on_close(self):
         self._to_kill = False
