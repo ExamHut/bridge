@@ -158,9 +158,7 @@ class JudgeHandler(ZlibPacketHandler):
                                           executors=list(self.executors.keys())))
 
     def _disconnected(self):
-        print('Im trying to shut down')
         Judge.update(online=False).where(Judge.id == self.judge.id).execute()
-        print('almost...')
         RuntimeVersion.delete().where(RuntimeVersion.judge == self.judge).execute()
 
     def _update_ping(self):
@@ -216,7 +214,6 @@ class JudgeHandler(ZlibPacketHandler):
             #                                'contest__participation__id', 'language__file_only',
             #                                'language__file_size_limit')).get()
             sub = Submission.filter(Submission.id == submission).get()
-            print(sub.__dict__)
             pid = sub.problem.id
             time = sub.problem.time_limit
             memory = sub.problem.memory_limit
@@ -413,11 +410,6 @@ class JudgeHandler(ZlibPacketHandler):
         status = 0
         status_codes = ['SC', 'AC', 'WA', 'MLE', 'TLE', 'IR', 'RTE', 'OLE']
         batches = {}  # batch number: (points, total)
-
-        print(submission.id)
-
-        print(SubmissionTestCase.select().join(Submission)
-              .filter(SubmissionTestCase.submission == submission).count())
 
         for case in SubmissionTestCase.select(SubmissionTestCase, Submission)\
                 .join(Submission):
