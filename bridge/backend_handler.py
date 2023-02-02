@@ -51,6 +51,7 @@ class BackendHandler(ZlibPacketHandler):
     def on_disconnect_request(self, data):
         judge_id = data['judge-id']
         force = data['force']
+        logger.info('Judge %s requested disconnect (force=%s)', judge_id, force)
         self.judges.disconnect(judge_id, force=force)
 
     def on_malformed(self, packet):

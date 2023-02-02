@@ -216,6 +216,7 @@ class JudgeHandler(ZlibPacketHandler):
             #                                'contest__participation__id', 'language__file_only',
             #                                'language__file_size_limit')).get()
             sub = Submission.filter(Submission.id == submission).get()
+            print(sub.__dict__)
             pid = sub.problem.id
             time = sub.problem.time_limit
             memory = sub.problem.memory_limit
@@ -224,8 +225,8 @@ class JudgeHandler(ZlibPacketHandler):
             is_pretested = sub.is_pretested
             sub_date = sub.date
             uid = sub.user.id
-            part_id = sub.participation.id
-            part_virtual = sub.participation.virtual
+            part_id = sub.contest_participation.id
+            part_virtual = sub.contest_participation.virtual
             file_only = sub.language.file_only
             file_size_limit = sub.language.file_size_limit
         except Submission.DoesNotExist:
@@ -240,7 +241,7 @@ class JudgeHandler(ZlibPacketHandler):
             .join(Problem).switch(Submission).join(User).switch(Submission).join(ContestParticipation)\
             .where(
                 Submission.problem.id == pid,
-                Submission.participation.id == part_id,
+                Submission.contest_participation.id == part_id,
                 Submission.user.id == uid,
                 Submission.date < sub_date, Submission.status.not_in(['CE', 'IE'])
             ).count() + 1
@@ -268,6 +269,7 @@ class JudgeHandler(ZlibPacketHandler):
             # Yank the power out.
             self.close()
         else:
+            logger.info('Disconnecting judge: %s', self.client_address)
             self.send({'name': 'disconnect'})
 
     def submit(self, id, problem, language, source):
@@ -305,7 +307,7 @@ class JudgeHandler(ZlibPacketHandler):
         _ensure_connection()
 
         id = packet['submission-id']
-        if Submission.update(status='P', judged_on=self.judge).where(Submission.id == id).execute():
+        if Submission.update(status='P', judge_id=self.judge).where(Submission.id == id).execute():
             # event.post('sub_%s' % Submission.get_id_secret(id), {'type': 'processing'})
             self._post_update_submission(id, 'processing')
             json_log.info(self._make_json_log(packet, action='processing'))

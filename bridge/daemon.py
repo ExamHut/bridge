@@ -51,5 +51,5 @@ def judge_daemon():
     try:
         stop.wait()
     finally:
-        backend_server.shutdown()
         judge_server.shutdown()
+        backend_server.shutdown()
